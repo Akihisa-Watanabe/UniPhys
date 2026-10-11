@@ -126,6 +126,17 @@ class IsaacHumanoidExperiment(BaseLightningExperiment):
         any dataloader post-processing here
         """
 
+        if self.cfg.training.get("train_data_stats"):
+            # Fine-tuning: the pretrained weights expect the statistics of the data they were trained on, so the new
+            # data is normalized with those, from the train_data_stats.npy next to the pretrained checkpoint's folder.
+            stats = np.load(self.cfg.training.train_data_stats, allow_pickle=True)[()]
+            print("Normalizing with the statistics of {}".format(self.cfg.training.train_data_stats))
+            for key, name in (("Mean", "Mean"), ("Std", "Std"), ("ActionMean", "ActionMean"), ("ActionStd", "ActionStd"),
+                              ("zMean", "zMean"), ("zStd", "zStd")):
+                if key in stats:
+                    assert np.shape(stats[key]) == np.shape(getattr(self.train_dataset, name)), key
+                    setattr(self.train_dataset, name, stats[key])
+
         train_data_stats = {"Mean": self.train_dataset.Mean, "Std": self.train_dataset.Std, "ActionMean": self.train_dataset.ActionMean, "ActionStd": self.train_dataset.ActionStd, "zMean": self.train_dataset.zMean, "zStd": self.train_dataset.zStd}
         self.algo.state_mean, self.algo.state_std = self.train_dataset.Mean, self.train_dataset.Std
         self.algo.action_mean, self.algo.action_std = self.train_dataset.ActionMean, self.train_dataset.ActionStd
