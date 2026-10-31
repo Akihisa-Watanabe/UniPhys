@@ -8,6 +8,9 @@ cut from the motion as PULSE tracked it (data/amass_state-action-pairs), the fra
 brought to 30 fps; a mirrored item is the mirror image of the tracked motion, which the symmetric
 humanoid could have performed as well. Items of HumanAct12 and motions UniPhys left out have no
 episode. An episode is 300 steps, the last frame held; the benchmark's scorer applies its fall rule.
+A motion does not depend on a caption, so an item has one episode per caption, the same bodies under
+each: the scorer draws one episode per item in every run, and so a caption anew, as it draws one for
+the recorded motions and as CLoSD's evaluation does for them.
 """
 import argparse
 import csv
@@ -51,7 +54,7 @@ def main():
     texts = zipfile.ZipFile(args.humanml3d / "texts.zip")
     with open(args.humanml3d / "index.csv") as file:
         rows = {row["new_name"][:-4]: row for row in csv.DictReader(file)}
-    episodes, keys, missing = [], [], dict(humanact12=0, untracked=0, short=0)
+    episodes, keys, caption_ids, missing = [], [], [], dict(humanact12=0, untracked=0, short=0)
     for key, motion, captions in zip(tqdm(test["key"]), test["motion"], test["captions"]):
         name = key.split("_")[-1]  # a part is keyed <letter>_<motion>
         row = rows[name[1:] if name.startswith("M") else name]  # Python 3.8
@@ -81,11 +84,15 @@ def main():
         if name.startswith("M"):  # the mirror image in the plane x = 0
             body = body[:, MIRRORED] * [-1., 1, 1]
         body[..., :2] -= body[0, 0, :2]
-        episodes.append(np.concatenate((body, np.repeat(body[-1:], STEPS - len(body), 0))).astype(np.float32))
-        keys.append(key)
+        episode = np.concatenate((body, np.repeat(body[-1:], STEPS - len(body), 0))).astype(np.float32)
+        for caption in range(len(captions)):  # the same episode under each caption
+            episodes.append(episode)
+            keys.append(key)
+            caption_ids.append(caption)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(args.out, body_pos=np.stack(episodes), fps=FPS, key=np.array(keys), caption=np.zeros(len(keys), dtype=np.int64))
-    print(f"{len(keys)} of {len(test['key'])} test items in {args.out}; without an episode: {missing}")
+    np.savez(args.out, body_pos=np.stack(episodes), fps=FPS, key=np.array(keys), caption=np.array(caption_ids))
+    print(f"{len(set(keys))} of {len(test['key'])} test items in {args.out}, {len(keys)} episodes; "
+          f"without an episode: {missing}")
 
 
 if __name__ == "__main__":
